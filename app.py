@@ -84,24 +84,32 @@ st.title("🌿 Registro de Transectas (0-50m)")
 tab_reg, tab_an = st.tabs(["📏 Registro de Campo", "📊 Informe y Análisis"])
 
 with tab_reg:
+    # NUEVA SECCIÓN: Agregar Especie Faltante
+    with st.expander("➕ Agregar especie que no está en la lista"):
+        c_esp1, c_esp2 = st.columns([3, 1])
+        with c_esp1:
+            nueva_esp_input = st.text_input("Nombre de la nueva especie", key="input_nueva_esp")
+        with c_esp2:
+            st.write(" ")
+            if st.button("Guardar Especie", use_container_width=True):
+                if nueva_esp_input and nueva_esp_input not in st.session_state.lista_especies:
+                    st.session_state.lista_especies.append(nueva_esp_input)
+                    st.session_state.lista_especies.sort()
+                    st.success(f"{nueva_esp_input} agregada!")
+                    st.rerun()
+                elif not nueva_esp_input:
+                    st.warning("Escribe un nombre.")
+
+    # Registro de Tramos
     with st.container(border=True):
         col1, col2, col3, col4 = st.columns([2.5, 1, 1, 1])
         
         with col1:
-            # CAMBIO CLAVE: Usamos on_change para procesar nuevas especies inmediatamente
-            def agregar_especie_nueva():
-                val = st.session_state.selector_esp
-                if val and val not in st.session_state.lista_especies:
-                    st.session_state.lista_especies.append(val)
-                    st.session_state.lista_especies.sort()
-
-            esp = st.selectbox(
-                "Especie", 
+            esp_seleccionada = st.selectbox(
+                "Seleccionar Especie", 
                 options=st.session_state.lista_especies, 
                 index=None, 
-                placeholder="Escribe o busca una especie...",
-                key="selector_esp",
-                on_change=agregar_especie_nueva
+                placeholder="Busca en la lista..."
             )
 
         with col2:
@@ -112,14 +120,21 @@ with tab_reg:
             fin = st.number_input("Fin (m)", min_value=0.0, max_value=50.0, value=v_fin, step=0.01)
         with col4:
             st.write(" ")
-            if st.button("📥 Registrar", use_container_width=True):
-                if esp and fin > ini:
-                    st.session_state.datos_intervalos.append({"Especie": esp, "Inicio": ini, "Fin": fin, "Longitud (m)": round(fin-ini, 2)})
+            if st.button("📥 Registrar Tramo", use_container_width=True):
+                if esp_seleccionada and fin > ini:
+                    st.session_state.datos_intervalos.append({
+                        "Especie": esp_seleccionada, 
+                        "Inicio": ini, 
+                        "Fin": fin, 
+                        "Longitud (m)": round(fin-ini, 2)
+                    })
                     st.rerun()
+                elif not esp_seleccionada:
+                    st.error("Selecciona una especie.")
 
     if st.session_state.datos_intervalos:
         st.dataframe(pd.DataFrame(st.session_state.datos_intervalos).sort_values(by="Inicio", ascending=False), use_container_width=True)
-        if st.button("🗑️ Borrar último"):
+        if st.button("🗑️ Borrar último registro"):
             st.session_state.datos_intervalos.pop()
             st.rerun()
 
@@ -148,17 +163,17 @@ with tab_an:
             long_suelo = resumen[resumen["Especie"] == "Suelo Desnudo"]["Longitud (m)"].sum()
             long_veg = 50.0 - long_suelo
             df_pie = pd.DataFrame({"Cat": ["Cobertura Veg.", "Suelo Desnudo"], "Val": [long_veg, long_suelo]})
-            st.plotly_chart(px.pie(df_pie, values="Val", names="Cat", title="Total Transecta", color="Cat", color_discrete_map={"Cobertura Veg.":"#2E7D32","Suelo Desnudo":"#795548"}), use_container_width=True)
+            st.plotly_chart(px.pie(df_pie, values="Val", names="Cat", title="Total Transecta (50m)", color="Cat", color_discrete_map={"Cobertura Veg.":"#2E7D32","Suelo Desnudo":"#795548"}), use_container_width=True)
 
-        st.subheader("🗺️ Mapa de Distribución")
-        # Ajuste para el mapa: Ordenamos para que las especies se vean bien
+        st.subheader("🗺️ Mapa de Distribución Espacial")
+        # Forzamos el mapa para que no aparezca en blanco
         fig_map = px.timeline(df_full, x_start="Inicio", x_end="Fin", y="Especie", color="Especie", 
                               color_discrete_map={"Suelo Desnudo": "#E5E5E5"})
         fig_map.update_layout(xaxis_type='linear', xaxis=dict(range=[0, 50], title="Metros"))
         st.plotly_chart(fig_map, use_container_width=True)
 
         if st.button("🔨 Descargar Informe PDF", use_container_width=True):
-            pdf_b = generar_pdf(resumen, df_full, long_veg, long_suelo)
+            pdf_b = generar_pdf(resumen, df_full.sort_values(by="Inicio"), long_veg, long_suelo)
             st.download_button("⬇️ Guardar PDF", data=pdf_b, file_name="informe_transecta.pdf", mime="application/pdf")
     else:
         st.warning("No hay datos para analizar.")
