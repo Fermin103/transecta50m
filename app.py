@@ -21,116 +21,83 @@ if 'lista_especies' not in st.session_state:
 if 'datos_intervalos' not in st.session_state:
     st.session_state.datos_intervalos = []
 
-# --- FUNCIÓN PARA GENERAR PDF (Actualizada para fpdf2) ---
+# --- FUNCIÓN PARA GENERAR PDF ---
 def generar_pdf(df_resumen, df_detalle):
     pdf = FPDF()
     pdf.add_page()
-    pdf.set_font("Arial", size=16)
-    pdf.cell(190, 10, txt="Informe de Transecta Botánica (50m)", ln=True, align='C')
+    pdf.set_font("helvetica", "B", 16)
+    pdf.cell(0, 10, "Informe de Transecta Botánica (50m)", ln=True, align='C')
     pdf.ln(10)
     
     # Resumen
-    pdf.set_font("Arial", size=12)
-    pdf.cell(190, 10, txt="Resumen de Cobertura (%)", ln=True)
-    pdf.set_font("Arial", size=10)
-    
-    pdf.cell(95, 8, "Especie / Componente", 1)
-    pdf.cell(45, 8, "Longitud (m)", 1)
-    pdf.cell(45, 8, "% Cobertura", 1)
-    pdf.ln()
+    pdf.set_font("helvetica", "B", 12)
+    pdf.cell(0, 10, "Resumen de Cobertura", ln=True)
+    pdf.set_font("helvetica", "", 10)
     
     for _, row in df_resumen.iterrows():
-        pdf.cell(95, 7, str(row['Especie']), 1)
-        pdf.cell(45, 7, f"{row['Longitud (m)']} m", 1)
-        pdf.cell(45, 7, f"{row['% Cobertura']} %", 1)
-        pdf.ln()
+        linea = f"{row['Especie']}: {row['Longitud (m)']}m ({row['% Cobertura']}%)"
+        pdf.cell(0, 8, linea, ln=True)
         
     pdf.ln(10)
     
     # Detalle
-    pdf.set_font("Arial", size=12)
-    pdf.cell(190, 10, txt="Detalle de Tramos", ln=True)
-    pdf.set_font("Arial", size=9)
-    
-    pdf.cell(80, 8, "Especie", 1)
-    pdf.cell(35, 8, "Inicio (m)", 1)
-    pdf.cell(35, 8, "Fin (m)", 1)
-    pdf.cell(35, 8, "Largo (m)", 1)
-    pdf.ln()
+    pdf.set_font("helvetica", "B", 12)
+    pdf.cell(0, 10, "Detalle de Tramos", ln=True)
+    pdf.set_font("helvetica", "", 9)
     
     for _, row in df_detalle.iterrows():
-        pdf.cell(80, 7, str(row['Especie']), 1)
-        pdf.cell(35, 7, str(row['Inicio']), 1)
-        pdf.cell(35, 7, str(row['Fin']), 1)
-        pdf.cell(35, 7, str(row['Longitud (m)']), 1)
-        pdf.ln()
+        linea_det = f"Desde {row['Inicio']}m hasta {row['Fin']}m: {row['Especie']}"
+        pdf.cell(0, 7, linea_det, ln=True)
         
-    # Retornar bytes de forma segura
     return pdf.output()
 
 # --- INTERFAZ ---
 st.title("🌿 Registro de Transectas (0-50m)")
 
-tab_registro, tab_analisis = st.tabs(["📏 Registro de Tramos", "📊 Análisis e Informe"])
+tab_reg, tab_an = st.tabs(["📏 Registro", "📊 Informe"])
 
-with tab_registro:
+with tab_reg:
     with st.container(border=True):
-        col1, col2, col3, col4 = st.columns([2.5, 1, 1, 1])
-        with col1:
-            especie_sel = st.selectbox("Especie", options=st.session_state.lista_especies, index=None, placeholder="Escribe o busca...")
-            if especie_sel and especie_sel not in st.session_state.lista_especies:
-                st.session_state.lista_especies.append(especie_sel)
+        c1, c2, c3, c4 = st.columns([2.5, 1, 1, 1])
+        with c1:
+            esp = st.selectbox("Especie", options=st.session_state.lista_especies, index=None, placeholder="Escribe o busca...")
+            if esp and esp not in st.session_state.lista_especies:
+                st.session_state.lista_especies.append(esp)
                 st.session_state.lista_especies.sort()
                 st.rerun()
-        with col2:
-            sugerencia = st.session_state.datos_intervalos[-1]["Fin"] if st.session_state.datos_intervalos else 0.0
-            inicio = st.number_input("Inicio (m)", min_value=0.0, max_value=50.0, value=float(sugerencia), step=0.01)
-        with col3:
-            fin = st.number_input("Fin (m)", min_value=0.0, max_value=50.0, value=float(inicio + 0.1), step=0.01)
-        with col4:
+        with c2:
+            sug = st.session_state.datos_intervalos[-1]["Fin"] if st.session_state.datos_intervalos else 0.0
+            ini = st.number_input("Inicio (m)", min_value=0.0, max_value=50.0, value=float(sug))
+        with c3:
+            fin = st.number_input("Fin (m)", min_value=0.0, max_value=50.0, value=float(ini + 0.1))
+        with c4:
             st.write(" ")
-            if st.button("📥 Registrar", use_container_width=True):
-                if especie_sel and fin > inicio:
-                    st.session_state.datos_intervalos.append({"Especie": especie_sel, "Inicio": inicio, "Fin": fin, "Longitud (m)": round(fin - inicio, 2)})
+            if st.button("📥 Registrar"):
+                if esp and fin > ini:
+                    st.session_state.datos_intervalos.append({"Especie": esp, "Inicio": ini, "Fin": fin, "Longitud (m)": round(fin-ini, 2)})
                     st.rerun()
 
     if st.session_state.datos_intervalos:
-        df_display = pd.DataFrame(st.session_state.datos_intervalos)
-        st.dataframe(df_display.sort_values(by="Inicio", ascending=False), use_container_width=True)
-        if st.button("🗑️ Eliminar último"):
+        st.dataframe(pd.DataFrame(st.session_state.datos_intervalos).sort_values(by="Inicio", ascending=False))
+        if st.button("🗑️ Borrar último"):
             st.session_state.datos_intervalos.pop()
             st.rerun()
 
-with tab_analisis:
+with tab_an:
     if st.session_state.datos_intervalos:
-        df_an = pd.DataFrame(st.session_state.datos_intervalos)
-        cobertura = df_an.groupby("Especie")["Longitud (m)"].sum().reset_index()
-        cobertura["% Cobertura"] = (cobertura["Longitud (m)"] / 50 * 100).round(2)
+        df = pd.DataFrame(st.session_state.datos_intervalos)
+        res = df.groupby("Especie")["Longitud (m)"].sum().reset_index()
+        res["% Cobertura"] = (res["Longitud (m)"] / 50 * 100).round(2)
         
-        st.subheader("Resultados")
-        col_res, col_chart = st.columns([1, 2])
-        
-        with col_res:
-            st.dataframe(cobertura.sort_values("% Cobertura", ascending=False), hide_index=True)
-            st.divider()
-            
-            # Generar PDF al presionar el botón
-            try:
-                pdf_bytes = generar_pdf(cobertura, df_an)
-                st.download_button(
-                    label="📄 Descargar Informe PDF",
-                    data=bytes(pdf_bytes),
-                    file_name="informe_transecta.pdf",
-                    mime="application/pdf",
-                    use_container_width=True
-                )
-            except Exception as e:
-                st.error(f"Error al generar PDF: {e}")
-            
-        with col_chart:
-            fig = px.timeline(df_an, x_start="Inicio", x_end="Fin", y="Especie", color="Especie")
+        col_r, col_c = st.columns([1, 2])
+        with col_r:
+            st.dataframe(res.sort_values("% Cobertura", ascending=False), hide_index=True)
+            if st.button("🔨 Preparar PDF"):
+                pdf_out = generar_pdf(res, df)
+                st.download_button("📄 Descargar PDF", data=pdf_out, file_name="transecta.pdf")
+        with col_c:
+            fig = px.timeline(df, x_start="Inicio", x_end="Fin", y="Especie", color="Especie")
             fig.update_layout(xaxis_type='linear')
-            fig.layout.xaxis.update(dict(range=[0, 50]))
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig)
     else:
-        st.warning("No hay datos registrados.")
+        st.warning("Sin datos.")
