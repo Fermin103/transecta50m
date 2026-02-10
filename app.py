@@ -55,7 +55,6 @@ def generar_pdf(df_resumen, df_detalle, long_veg, long_suelo):
     pdf.cell(0, 10, "Informe Final de Transecta Botanica", ln=True, align='C')
     pdf.ln(5)
     
-    # Tabla de Especies (Excluyendo Suelo Desnudo)
     pdf.set_font("helvetica", "B", 12)
     pdf.cell(0, 10, "Planilla de Especies Detectadas", ln=True)
     pdf.set_font("helvetica", "", 10)
@@ -71,21 +70,12 @@ def generar_pdf(df_resumen, df_detalle, long_veg, long_suelo):
             pdf.ln()
 
     pdf.ln(10)
-    # Resumen Global (Datos del gráfico de torta)
     pdf.set_font("helvetica", "B", 12)
-    pdf.cell(0, 10, "Resumen Global de Cobertura", ln=True)
+    pdf.cell(0, 10, "Resumen Global", ln=True)
     pdf.set_font("helvetica", "", 11)
     pdf.cell(0, 8, f"Cobertura Vegetal Total: {round((long_veg/50)*100, 2)}%", ln=True)
     pdf.cell(0, 8, f"Suelo Desnudo Total: {round((long_suelo/50)*100, 2)}%", ln=True)
     
-    pdf.ln(10)
-    # Detalle de Tramos
-    pdf.set_font("helvetica", "B", 12)
-    pdf.cell(0, 10, "Registro Detallado de Tramos (Mapa)", ln=True)
-    pdf.set_font("helvetica", "", 9)
-    for _, row in df_detalle.iterrows():
-        pdf.cell(0, 6, f"{row['Inicio']}m - {row['Fin']}m: {row['Especie']}", ln=True)
-        
     return bytes(pdf.output())
 
 # --- INTERFAZ ---
@@ -96,13 +86,24 @@ tab_reg, tab_an = st.tabs(["📏 Registro de Campo", "📊 Informe y Análisis"]
 with tab_reg:
     with st.container(border=True):
         col1, col2, col3, col4 = st.columns([2.5, 1, 1, 1])
+        
         with col1:
-            # Opción editable para agregar especies nuevas directamente
-            esp = st.selectbox("Especie", options=st.session_state.lista_especies, index=None, placeholder="Busca o escribe una especie...")
-            if esp and esp not in st.session_state.lista_especies:
-                st.session_state.lista_especies.append(esp)
-                st.session_state.lista_especies.sort()
-                st.rerun()
+            # CAMBIO CLAVE: Usamos on_change para procesar nuevas especies inmediatamente
+            def agregar_especie_nueva():
+                val = st.session_state.selector_esp
+                if val and val not in st.session_state.lista_especies:
+                    st.session_state.lista_especies.append(val)
+                    st.session_state.lista_especies.sort()
+
+            esp = st.selectbox(
+                "Especie", 
+                options=st.session_state.lista_especies, 
+                index=None, 
+                placeholder="Escribe o busca una especie...",
+                key="selector_esp",
+                on_change=agregar_especie_nueva
+            )
+
         with col2:
             sug_ini = st.session_state.datos_intervalos[-1]["Fin"] if st.session_state.datos_intervalos else 0.0
             ini = st.number_input("Inicio (m)", min_value=0.0, max_value=50.0, value=float(sug_ini), step=0.01)
@@ -123,43 +124,41 @@ with tab_reg:
             st.rerun()
 
 with tab_an:
-    datos_completos = rellenar_suelo_desnudo(st.session_state.datos_intervalos)
     if st.session_state.datos_intervalos:
+        datos_completos = rellenar_suelo_desnudo(st.session_state.datos_intervalos)
         df_full = pd.DataFrame(datos_completos)
         
-        # Resumen de Cobertura
+        # Resumen
         resumen = df_full.groupby("Especie").agg(Longitud_Total=("Longitud (m)", "sum"), Apariciones=("Especie", "count")).reset_index()
         resumen.columns = ["Especie", "Longitud (m)", "Nº de Apariciones"]
         resumen["% Cobertura"] = (resumen["Longitud (m)"] / 50 * 100).round(2)
         resumen = resumen.sort_values(by="Nº de Apariciones", ascending=False)
         
-        # Filtrar solo especies (sin Suelo Desnudo) para la planilla
+        # Planilla limpia (Sin suelo desnudo)
         planilla_especies = resumen[resumen["Especie"] != "Suelo Desnudo"]
         
-        st.subheader("📋 Planilla de Especies (Excluye Suelo Desnudo)")
+        st.subheader("📋 Planilla de Especies")
         st.dataframe(planilla_especies, hide_index=True, use_container_width=True)
         
         c_bar, c_pie = st.columns(2)
         with c_bar:
-            st.write("**% Cobertura por Especie**")
-            st.plotly_chart(px.bar(planilla_especies, x="Especie", y="% Cobertura", color="Especie", text_auto=True), use_container_width=True)
+            st.plotly_chart(px.bar(planilla_especies, x="Especie", y="% Cobertura", title="% Cobertura por Especie", text_auto=True), use_container_width=True)
         
         with c_pie:
-            st.write("**Cobertura Vegetal vs Suelo Desnudo**")
             long_suelo = resumen[resumen["Especie"] == "Suelo Desnudo"]["Longitud (m)"].sum()
             long_veg = 50.0 - long_suelo
-            df_pie = pd.DataFrame({"Cat": ["Veg.", "Suelo"], "Val": [long_veg, long_suelo]})
-            st.plotly_chart(px.pie(df_pie, values="Val", names="Cat", color="Cat", color_discrete_map={"Veg.":"#2E7D32","Suelo":"#795548"}), use_container_width=True)
+            df_pie = pd.DataFrame({"Cat": ["Cobertura Veg.", "Suelo Desnudo"], "Val": [long_veg, long_suelo]})
+            st.plotly_chart(px.pie(df_pie, values="Val", names="Cat", title="Total Transecta", color="Cat", color_discrete_map={"Cobertura Veg.":"#2E7D32","Suelo Desnudo":"#795548"}), use_container_width=True)
 
-        st.subheader("🗺️ Mapa de Distribución Espacial")
-        # Corrección del Mapa: Forzamos el renderizado de tramos
+        st.subheader("🗺️ Mapa de Distribución")
+        # Ajuste para el mapa: Ordenamos para que las especies se vean bien
         fig_map = px.timeline(df_full, x_start="Inicio", x_end="Fin", y="Especie", color="Especie", 
-                              color_discrete_map={"Suelo Desnudo": "#D3D3D3"})
-        fig_map.update_layout(xaxis_type='linear', xaxis=dict(range=[0, 50], title="Distancia (m)"))
+                              color_discrete_map={"Suelo Desnudo": "#E5E5E5"})
+        fig_map.update_layout(xaxis_type='linear', xaxis=dict(range=[0, 50], title="Metros"))
         st.plotly_chart(fig_map, use_container_width=True)
 
-        if st.button("🔨 Descargar Informe PDF Completo", use_container_width=True):
-            pdf_b = generar_pdf(resumen, df_full.sort_values(by="Inicio"), long_veg, long_suelo)
+        if st.button("🔨 Descargar Informe PDF", use_container_width=True):
+            pdf_b = generar_pdf(resumen, df_full, long_veg, long_suelo)
             st.download_button("⬇️ Guardar PDF", data=pdf_b, file_name="informe_transecta.pdf", mime="application/pdf")
     else:
-        st.warning("No hay datos suficientes.")
+        st.warning("No hay datos para analizar.")
