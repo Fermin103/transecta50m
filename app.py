@@ -1,103 +1,112 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-from streamlit_js_eval import streamlit_js_eval
 
 # Configuración de página
-st.set_page_config(page_title="Transecta Botánica Pro", layout="wide")
+st.set_page_config(page_title="Transecta Botánica - Intervalos", layout="wide")
 
-# --- GESTIÓN DE ESPECIES EN SESIÓN ---
+# --- ESTADO DE LA SESIÓN ---
 if 'lista_especies' not in st.session_state:
-    # Especies iniciales basadas en tu Excel
-    st.session_state.lista_especies = ["Suelo Desnudo", "Jarilla", "Coirón", "Flechilla", "Tomillo"]
+    st.session_state.lista_especies = ["Suelo Desnudo", "Broza", "Jarilla", "Coirón", "Flechilla"]
 
-if 'datos_transecta' not in st.session_state:
-    st.session_state.datos_transecta = []
+if 'datos_intervalos' not in st.session_state:
+    st.session_state.datos_intervalos = []
 
-# --- BARRA LATERAL (Configuración y Nueva Especie) ---
-with st.sidebar:
-    st.header("⚙️ Configuración")
-    
-    # Agregar nueva especie
-    st.subheader("➕ Añadir Especie")
-    nueva_sp = st.text_input("Nombre de la especie")
-    if st.button("Registrar Especie"):
+# --- INTERFAZ ---
+st.title("🌿 Registro de Transectas por Intervalos (0-50m)")
+
+tab_registro, tab_especies, tab_analisis = st.tabs([
+    "📏 Registro de Intervalos", 
+    "🌱 Gestión de Especies", 
+    "📊 Análisis de Cobertura"
+])
+
+# --- SOLAPA: GESTIÓN DE ESPECIES ---
+with tab_especies:
+    st.header("Configuración del Catálogo")
+    nueva_sp = st.text_input("Nombre de la planta / Categoría")
+    if st.button("Añadir a la lista"):
         if nueva_sp and nueva_sp not in st.session_state.lista_especies:
             st.session_state.lista_especies.append(nueva_sp)
-            st.success(f"{nueva_sp} añadida!")
-        else:
-            st.warning("La especie ya existe o el nombre está vacío.")
+            st.rerun()
+    st.write("**Especies actuales:**", ", ".join(st.session_state.lista_especies))
 
-    st.divider()
-    if st.button("🗑️ Borrar todo y empezar de nuevo"):
-        st.session_state.datos_transecta = []
-        st.rerun()
-
-# --- CUERPO PRINCIPAL ---
-st.title("🌿 Registro de Transectas con Parches")
-st.info("Puedes seleccionar varias especies si están superpuestas en el mismo punto.")
-
-# Formulario de entrada
-with st.container(border=True):
-    col1, col2, col3 = st.columns([1, 2, 1])
+# --- SOLAPA: REGISTRO DE INTERVALOS ---
+with tab_registro:
+    st.info("Ingresa el inicio y fin de cada especie. Pueden superponerse (parches).")
     
-    with col1:
-        punto = st.number_input("Punto/Distancia (m)", min_value=0.0, step=0.1, value=float(len(st.session_state.datos_transecta)))
-    
-    with col2:
-        # Aquí está el cambio clave: multiselect para parches superpuestos
-        especies_seleccionadas = st.multiselect(
-            "Especies en este punto (Parche)", 
-            options=st.session_state.lista_especies,
-            default=["Suelo Desnudo"] if not st.session_state.lista_especies else None
-        )
-    
-    with col3:
-        st.write(" ")
-        if st.button("📍 Registrar Punto", use_container_width=True):
-            if especies_seleccionadas:
-                # Guardamos como una cadena separada por comas para el DataFrame
-                st.session_state.datos_transecta.append({
-                    "Punto": punto,
-                    "Especies": ", ".join(especies_seleccionadas),
-                    "Cant_Especies": len(especies_seleccionadas)
-                })
-                st.rerun()
-
-# --- VISUALIZACIÓN Y CÁLCULOS ---
-if st.session_state.datos_transecta:
-    df = pd.DataFrame(st.session_state.datos_transecta)
-    
-    tab1, tab2 = st.tabs(["📊 Análisis de Cobertura", "📋 Datos Crudos"])
-    
-    with tab1:
-        # Calcular frecuencia de cada especie individualmente aunque estén en parches
-        todas_las_apariciones = []
-        for registro in st.session_state.datos_transecta:
-            esps = registro["Especies"].split(", ")
-            todas_las_apariciones.extend(esps)
+    with st.container(border=True):
+        col1, col2, col3, col4 = st.columns([2, 1, 1, 1])
         
-        df_counts = pd.Series(todas_las_apariciones).value_counts().reset_index()
-        df_counts.columns = ['Especie', 'Frecuencia']
-        df_counts['% Cobertura'] = (df_counts['Frecuencia'] / len(df)) * 100
-
-        col_a, col_b = st.columns(2)
+        with col1:
+            especie_sel = st.selectbox("Especie/Componente", options=st.session_state.lista_especies)
         
-        with col_a:
-            st.subheader("Tabla de Cobertura")
-            st.dataframe(df_counts, hide_index=True, use_container_width=True)
+        with col2:
+            # Sugiere el fin del último registro como inicio
+            ultimo_fin = st.session_state.datos_intervalos[-1]["Fin"] if st.session_state.datos_intervalos else 0.0
+            inicio = st.number_input("Inicio (m)", min_value=0.0, max_value=50.0, value=float(ultimo_fin), step=0.1)
+        
+        with col3:
+            fin = st.number_input("Fin (m)", min_value=0.0, max_value=50.0, value=float(inicio + 0.5), step=0.1)
             
-        with col_b:
-            st.subheader("Gráfico de Composición")
-            fig = px.pie(df_counts, values='Frecuencia', names='Especie', hole=0.4)
+        with col4:
+            st.write(" ")
+            if st.button("Registrar Intervalo", use_container_width=True):
+                if fin > inicio:
+                    longitud = fin - inicio
+                    st.session_state.datos_intervalos.append({
+                        "Especie": especie_sel,
+                        "Inicio": inicio,
+                        "Fin": fin,
+                        "Longitud (m)": round(longitud, 2)
+                    })
+                    st.success(f"Registrado: {especie_sel} ({inicio}m - {fin}m)")
+                else:
+                    st.error("El 'Fin' debe ser mayor que el 'Inicio'")
+
+    # Mostrar tabla de registros actuales
+    if st.session_state.datos_intervalos:
+        df_inter = pd.DataFrame(st.session_state.datos_intervalos)
+        st.subheader("Registros en la Transecta")
+        st.dataframe(df_inter, use_container_width=True)
+        
+        if st.button("🗑️ Borrar último registro"):
+            st.session_state.datos_intervalos.pop()
+            st.rerun()
+
+# --- SOLAPA: ANÁLISIS ---
+with tab_analisis:
+    if st.session_state.datos_intervalos:
+        df_analisis = pd.DataFrame(st.session_state.datos_intervalos)
+        
+        # Agrupar por especie para sumar longitudes totales
+        cobertura = df_analisis.groupby("Especie")["Longitud (m)"].sum().reset_index()
+        # Cálculo sobre el total de 50 metros
+        cobertura["% Cobertura"] = (cobertura["Longitud (m)"] / 50 * 100).round(2)
+        
+        col_t, col_g = st.columns([1, 2])
+        
+        with col_t:
+            st.subheader("Resumen de Cobertura")
+            st.write("*(Basado en 50 metros totales)*")
+            st.dataframe(cobertura, hide_index=True)
+            
+        with col_g:
+            # Gráfico de Gantt/Líneas para ver la distribución real en la transecta
+            fig = px.timeline(df_analisis, 
+                              x_start="Inicio", 
+                              x_end="Fin", 
+                              y="Especie", 
+                              color="Especie",
+                              title="Distribución Espacial en la Transecta (0-50m)")
+            
+            # Ajuste manual para que el eje X se comporte como metros y no como fechas
+            fig.update_layout(xaxis_type='linear')
+            fig.layout.xaxis.update(dict(tickmode='linear', tick0=0, dtick=5, range=[0, 50]))
             st.plotly_chart(fig, use_container_width=True)
 
-    with tab2:
-        st.subheader("Registro detallado de la transecta")
-        st.dataframe(df, use_container_width=True)
-        
-        # Opción para descargar
-        csv = df.to_csv(index=False).encode('utf-8')
-        st.download_button("📥 Descargar CSV", csv, "transecta_botanica.csv", "text/csv")
-else:
-    st.write("Aún no hay datos registrados. Comienza añadiendo puntos arriba.")
+        st.divider()
+        csv = df_analisis.to_csv(index=False).encode('utf-8')
+        st.download_button("📥 Descargar Datos Completos", csv, "transecta_intervalos.csv", "text/csv")
+    else:
+        st.warning("No hay datos registrados.")
